@@ -1,4 +1,4 @@
-# Elixir Documentation Lookup
+# Elixir Documentation
 
 This extension provides to commands:
 
@@ -32,4 +32,4 @@ This extension contributes the following settings:
 
 ### 0.0.1
 
-Version testing version.
+Initial very-very basic version for local testing.
