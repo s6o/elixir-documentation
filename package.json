@@ -1,13 +1,25 @@
 {
   "name": "elixir-documentation",
   "displayName": "Elixir Documentation",
-  "description": "Lookup Elixir documentation in hexdocs.pm via Simple Browser.",
+  "description": "Lookup Elixir/Erlang documentation via Simple Browser.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/s6o/elixir-documentation"
+  },
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.84.0"
   },
   "categories": [
+    "Other",
     "Programming Languages"
+  ],
+  "keywords": [
+    "elixir",
+    "documentation",
+    "docs",
+    "devdocs",
+    "reference"
   ],
   "activationEvents": [
     "onLanguage:elixir"
