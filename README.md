@@ -5,7 +5,7 @@ This extension provides to commands:
 * Elixir Documentation
 * Elixir documentation at cursor
 
-that open Elixir documentation in the built-in Simple Browser.
+that open Elixir or Erlang documentation in the built-in Simple Browser.
 
 ## Features
 
