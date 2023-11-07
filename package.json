@@ -11,10 +11,10 @@
     "vscode": "^1.84.0"
   },
   "categories": [
-    "Other",
     "Programming Languages"
   ],
   "keywords": [
+    "erlang",
     "elixir",
     "documentation",
     "docs",
@@ -32,8 +32,12 @@
         "title": "Elixir Documentation"
       },
       {
+        "command": "elixir-documentation.otp",
+        "title": "Erlang/OTP Documentation"
+      },
+      {
         "command": "elixir-documentation.lookup",
-        "title": "Elixir documentation at cursor"
+        "title": "Elixir/Erlang documentation at cursor"
       }
     ]
   },

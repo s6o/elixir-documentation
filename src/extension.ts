@@ -15,6 +15,11 @@ type DocRef = {
   isErl: boolean;
 };
 
+enum MainRef {
+  Elixir,
+  Erlang,
+}
+
 async function initDocRef(): Promise<DocRef> {
   const ref = {
     erlBase: 'https://www.erlang.org/docs',
@@ -52,10 +57,14 @@ function toDocUrl(ref: DocRef): string {
   }
 }
 
-function toMainDocUrl(ref: DocRef): string {
-  return `https://elixir-lang.org/docs.html#${majorElixirVersion(
-    ref.elixirVersion
-  )}`;
+function toMainDocUrl(ref: DocRef, main: MainRef): string {
+  if (main === MainRef.Erlang) {
+    return `${ref.erlBase}/${ref.otpVersion}`;
+  } else {
+    return `https://elixir-lang.org/docs.html#${majorElixirVersion(
+      ref.elixirVersion
+    )}`;
+  }
 }
 
 function majorElixirVersion(version: string): string {
@@ -96,7 +105,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Use the console to output diagnostic information (console.log) and errors (console.error)
   // This line of code will only be executed once when your extension is activated
   console.log(
-    'Congratulations, your extension "Elixir Documentation Lookup" is now active!'
+    'Congratulations, your extension "Elixir/Erlang Documentation Lookup" is now active!'
   );
 
   let docRef = await initDocRef();
@@ -107,12 +116,21 @@ export async function activate(context: vscode.ExtensionContext) {
   let cmdOpen = vscode.commands.registerCommand(
     'elixir-documentation.open',
     () => {
-      // The code you place here will be executed every time your command is executed
-      // Display a message box to the user
       vscode.commands.executeCommand('workbench.action.focusSecondEditorGroup');
       vscode.commands.executeCommand(
         'simpleBrowser.api.open',
-        toMainDocUrl(docRef)
+        toMainDocUrl(docRef, MainRef.Elixir)
+      );
+    }
+  );
+
+  let cmdOtp = vscode.commands.registerCommand(
+    'elixir-documentation.otp',
+    () => {
+      vscode.commands.executeCommand('workbench.action.focusSecondEditorGroup');
+      vscode.commands.executeCommand(
+        'simpleBrowser.api.open',
+        toMainDocUrl(docRef, MainRef.Erlang)
       );
     }
   );
@@ -171,6 +189,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(cmdOpen);
+  context.subscriptions.push(cmdOtp);
   context.subscriptions.push(cmdLookup);
 }
 
