@@ -9,6 +9,7 @@ type DocRef = {
   erlBase: string;
   hexBase: string;
   elixirVersion: string;
+  otpVersion: string;
   module: string;
   fragment: string;
   isErl: boolean;
@@ -16,9 +17,10 @@ type DocRef = {
 
 async function initDocRef(): Promise<DocRef> {
   const ref = {
-    erlBase: 'https://www.erlang.org/doc/man',
+    erlBase: 'https://www.erlang.org/docs',
     hexBase: 'https://hexdocs.pm', // TODO: get from configuration
     elixirVersion: '',
+    otpVersion: '',
     module: 'Kernel',
     fragment: '',
     isErl: false,
@@ -30,6 +32,7 @@ async function initDocRef(): Promise<DocRef> {
     const results = [...stdout.matchAll(/IEx\s+([\d\.]+).+OTP\s+(\d+)/g)];
     if (results && results[0]) {
       ref.elixirVersion = results[0][1];
+      ref.otpVersion = results[0][2];
       console.log(`Elixir ${results[0][1]}`);
       console.log(`OTP ${results[0][2]}`);
     }
@@ -39,7 +42,7 @@ async function initDocRef(): Promise<DocRef> {
 
 function toDocUrl(ref: DocRef): string {
   if (ref.isErl) {
-    return `${ref.erlBase}/${ref.module}${
+    return `${ref.erlBase}/${ref.otpVersion}/man/${ref.module}${
       ref.fragment ? `#${ref.fragment}` : ''
     }`;
   } else {
