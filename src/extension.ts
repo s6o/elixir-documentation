@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import process from 'process';
 import path from 'path';
 import * as fs from 'node:fs/promises';
+import { EOL } from 'os';
 import util from 'util';
 import { execFile as execNonPromise } from 'child_process';
 const execFile = util.promisify(execNonPromise);
@@ -22,6 +23,11 @@ enum MainRef {
   Elixir,
   Erlang,
 }
+
+type MixDep = {
+  package: string;
+  version: string;
+};
 
 async function initDocRef(): Promise<DocRef> {
   const ref = {
@@ -53,7 +59,6 @@ async function findMixLock(filePath: string): Promise<[boolean, string]> {
   let baseDir = path.dirname(filePath);
   while (true) {
     const mixLockFile = `${baseDir}${path.sep}mix.lock`;
-    console.log('Checking mix.lock at location: ' + mixLockFile);
     try {
       await fs.access(mixLockFile, fs.constants.R_OK);
       process.chdir(cwd); // restore the workding directory we started from
@@ -66,6 +71,29 @@ async function findMixLock(filePath: string): Promise<[boolean, string]> {
         continue;
       }
     }
+  }
+}
+
+async function parseMixDeps(filePath: string): Promise<MixDep[]> {
+  try {
+    const contents = await fs.readFile(filePath).then((buf) => buf.toString());
+    const lines = contents.split(EOL);
+    lines.shift();
+    lines.pop();
+    lines.pop();
+    const dependencies = lines.map((line) => {
+      const pkgParts = line.split('{');
+      const verParts = pkgParts[1].split(',');
+      const dep: MixDep = {
+        package: pkgParts[0].replaceAll(/[":]/gi, '').trim(),
+        version: verParts[2].replaceAll('"', '').trim(),
+      };
+      return dep;
+    });
+    return dependencies;
+  } catch (e) {
+    console.log(e);
+    return [];
   }
 }
 
@@ -196,6 +224,11 @@ export async function activate(context: vscode.ExtensionContext) {
         );
         console.log('Lock file found: ' + lockFileFound);
         console.log('Lock file at: ' + mixLockPath);
+        let mixDeps = [];
+        if (lockFileFound) {
+          mixDeps = await parseMixDeps(mixLockPath);
+          console.log('Mix deps count: ' + mixDeps.length);
+        }
 
         console.log(`Working dir: ${__dirname}`);
         const range = te.selection.isEmpty
