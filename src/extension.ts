@@ -230,9 +230,13 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
               );
               if (selected) {
+                console.log('Selected: ');
+                console.log(selected);
                 docRef = updateDocRef(docRef, selected);
               }
             } else {
+              console.log('First: ');
+              console.log(first);
               docRef = updateDocRef(docRef, first);
             }
           }
