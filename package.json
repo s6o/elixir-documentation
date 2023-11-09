@@ -1,6 +1,6 @@
 {
   "name": "elixir-documentation",
-  "displayName": "Elixir Documentation",
+  "displayName": "Elixir/Erlang Documentation",
   "description": "Lookup Elixir/Erlang documentation via Simple Browser.",
   "repository": {
     "type": "git",

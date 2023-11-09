@@ -78,15 +78,40 @@ function majorElixirVersion(version: string): string {
 
 function updateDocRef(ref: DocRef, item: vscode.QuickPickItem) {
   const isFunction: boolean = item.detail?.startsWith('(function)') || false;
+  const isBehaviour: boolean =
+    item.detail !== null && item.detail === 'behaviour';
+  const isException: boolean =
+    item.detail !== null && item.detail === 'exception';
+  const isMacro: boolean = item.detail?.startsWith('(macro)') || false;
   const isModule: boolean = item.detail !== null && item.detail === 'module';
 
-  if (isFunction) {
-    const startIndex = item.detail!.indexOf(' ') + 1;
-    const finalIndex = item.detail!.indexOf('.', startIndex);
-    const module = item.detail!.slice(startIndex, finalIndex);
+  if (isBehaviour) {
+    ref.module = item.label.replace(' (behaviour)', '');
+    return ref;
+  }
+
+  if (isException) {
+    ref.module = item.label.replace(' (exception)', '');
+    return ref;
+  }
+
+  if (isFunction || isMacro) {
+    const startIndex = item.detail!.indexOf(' ');
+    const finalIndex = item.detail!.lastIndexOf('.');
+    const module = item.detail!.slice(startIndex, finalIndex).trim();
     ref.isErl = module.startsWith(':');
     ref.module = ref.isErl ? module.slice(1) : module;
-    ref.fragment = ref.isErl ? item.label.replace('/', '-') : item.label;
+    if (module === 'Kernel.SpecialForms') {
+      let arity = '/0';
+      const args = item.detail!.match(/\([^\.]+\)$/gi);
+      if (args && args[0]) {
+        const splits = args[0].split(',');
+        arity = `/${splits.length}`;
+      }
+      ref.fragment = `${item.label}${arity}`;
+    } else {
+      ref.fragment = ref.isErl ? item.label.replace('/', '-') : item.label;
+    }
     return ref;
   }
 
@@ -145,7 +170,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const range = te.selection.isEmpty
           ? te.document.getWordRangeAtPosition(
               te.selection.active,
-              RegExp('[\\w\\.(]+')
+              RegExp('[\\w\\.(\\/]+')
             )
           : te.selection;
         if (range) {
@@ -158,23 +183,27 @@ export async function activate(context: vscode.ExtensionContext) {
               te.document.uri,
               range.end
             );
-          console.log(completes);
-          const result = await vscode.window.showQuickPick(
-            [
-              ...completes.items.map((e) => ({
-                label: e.label,
-                description: undefined,
-                detail: e.detail,
-              })),
-            ],
-            {
-              canPickMany: false,
+          if (completes && completes.items && completes.items.length > 0) {
+            const first: vscode.QuickPickItem = completes.items[0];
+            if (completes.items.length > 1) {
+              const selected = await vscode.window.showQuickPick(
+                [
+                  ...completes.items.map((e) => ({
+                    label: e.label,
+                    description: undefined,
+                    detail: e.detail,
+                  })),
+                ],
+                {
+                  canPickMany: false,
+                }
+              );
+              if (selected) {
+                docRef = updateDocRef(docRef, selected);
+              }
+            } else {
+              docRef = updateDocRef(docRef, first);
             }
-          );
-          if (result) {
-            console.log('QuickPick result:\n');
-            console.log(result);
-            docRef = updateDocRef(docRef, result);
           }
         }
       }
