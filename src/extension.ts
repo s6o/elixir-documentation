@@ -1,6 +1,9 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import process from 'process';
+import path from 'path';
+import * as fs from 'node:fs/promises';
 import util from 'util';
 import { execFile as execNonPromise } from 'child_process';
 const execFile = util.promisify(execNonPromise);
@@ -43,6 +46,27 @@ async function initDocRef(): Promise<DocRef> {
     }
   }
   return ref;
+}
+
+async function findMixLock(filePath: string): Promise<[boolean, string]> {
+  const cwd = process.cwd();
+  let baseDir = path.dirname(filePath);
+  while (true) {
+    const mixLockFile = `${baseDir}${path.sep}mix.lock`;
+    console.log('Checking mix.lock at location: ' + mixLockFile);
+    try {
+      await fs.access(mixLockFile, fs.constants.R_OK);
+      process.chdir(cwd); // restore the workding directory we started from
+      return [true, mixLockFile];
+    } catch {
+      if (path.dirname(baseDir) === '/' || path.dirname(baseDir) === 'C:\\') {
+        return [false, ''];
+      } else {
+        baseDir = path.dirname(baseDir);
+        continue;
+      }
+    }
+  }
 }
 
 function toDocUrl(ref: DocRef): string {
@@ -166,6 +190,13 @@ export async function activate(context: vscode.ExtensionContext) {
       // Find text on current line
       const te = vscode.window.activeTextEditor;
       if (te) {
+        console.log(te.document.fileName);
+        const [lockFileFound, mixLockPath] = await findMixLock(
+          te.document.fileName
+        );
+        console.log('Lock file found: ' + lockFileFound);
+        console.log('Lock file at: ' + mixLockPath);
+
         console.log(`Working dir: ${__dirname}`);
         const range = te.selection.isEmpty
           ? te.document.getWordRangeAtPosition(
