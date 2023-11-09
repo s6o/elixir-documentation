@@ -201,7 +201,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const range = te.selection.isEmpty
           ? te.document.getWordRangeAtPosition(
               te.selection.active,
-              RegExp('[\\w\\.(\\/]+')
+              RegExp('[\\w\\.()\\/, ]+')
             )
           : te.selection;
         if (range) {
