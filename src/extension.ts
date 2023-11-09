@@ -9,6 +9,11 @@ import util from 'util';
 import { execFile as execNonPromise } from 'child_process';
 const execFile = util.promisify(execNonPromise);
 
+type MixDep = {
+  name: string;
+  version: string;
+};
+
 type DocRef = {
   erlBase: string;
   hexBase: string;
@@ -17,17 +22,13 @@ type DocRef = {
   module: string;
   fragment: string;
   isErl: boolean;
+  package: undefined | MixDep;
 };
 
 enum MainRef {
   Elixir,
   Erlang,
 }
-
-type MixDep = {
-  package: string;
-  version: string;
-};
 
 async function initDocRef(): Promise<DocRef> {
   const ref = {
@@ -38,6 +39,7 @@ async function initDocRef(): Promise<DocRef> {
     module: 'Kernel',
     fragment: '',
     isErl: false,
+    package: undefined,
   };
 
   const { stdout, stderr } = await execFile('iex', ['-v']);
@@ -85,7 +87,7 @@ async function parseMixDeps(filePath: string): Promise<MixDep[]> {
       const pkgParts = line.split('{');
       const verParts = pkgParts[1].split(',');
       const dep: MixDep = {
-        package: pkgParts[0].replaceAll(/[":]/gi, '').trim(),
+        name: pkgParts[0].replaceAll(/[":]/gi, '').trim(),
         version: verParts[2].replaceAll('"', '').trim(),
       };
       return dep;
@@ -97,15 +99,28 @@ async function parseMixDeps(filePath: string): Promise<MixDep[]> {
   }
 }
 
+function isDependency(
+  packages: MixDep[],
+  packageName: string
+): undefined | MixDep {
+  return packages.find((dep) => dep.name === packageName);
+}
+
 function toDocUrl(ref: DocRef): string {
-  if (ref.isErl) {
-    return `${ref.erlBase}/${ref.otpVersion}/man/${ref.module}${
-      ref.fragment ? `#${ref.fragment}` : ''
-    }`;
+  if (ref.package) {
+    return `${ref.hexBase}/${ref.package.name}/${ref.package.version}/${
+      ref.module
+    }.html${ref.fragment ? `#${ref.fragment}` : ''}`;
   } else {
-    return `${ref.hexBase}/elixir/${ref.elixirVersion}/${ref.module}.html${
-      ref.fragment ? `#${ref.fragment}` : ''
-    }`;
+    if (ref.isErl) {
+      return `${ref.erlBase}/${ref.otpVersion}/man/${ref.module}${
+        ref.fragment ? `#${ref.fragment}` : ''
+      }`;
+    } else {
+      return `${ref.hexBase}/elixir/${ref.elixirVersion}/${ref.module}.html${
+        ref.fragment ? `#${ref.fragment}` : ''
+      }`;
+    }
   }
 }
 
@@ -128,7 +143,11 @@ function majorElixirVersion(version: string): string {
   }
 }
 
-function updateDocRef(ref: DocRef, item: vscode.QuickPickItem) {
+function updateDocRef(
+  ref: DocRef,
+  item: vscode.QuickPickItem,
+  packages: MixDep[]
+) {
   const isFunction: boolean = item.detail?.startsWith('(function)') || false;
   const isBehaviour: boolean =
     item.detail !== null && item.detail === 'behaviour';
@@ -139,12 +158,10 @@ function updateDocRef(ref: DocRef, item: vscode.QuickPickItem) {
 
   if (isBehaviour) {
     ref.module = item.label.replace(' (behaviour)', '');
-    return ref;
   }
 
   if (isException) {
     ref.module = item.label.replace(' (exception)', '');
-    return ref;
   }
 
   if (isFunction || isMacro) {
@@ -164,14 +181,14 @@ function updateDocRef(ref: DocRef, item: vscode.QuickPickItem) {
     } else {
       ref.fragment = ref.isErl ? item.label.replace('/', '-') : item.label;
     }
-    return ref;
   }
 
   if (isModule) {
     ref.isErl = item.label.startsWith(':');
     ref.module = ref.isErl ? item.label.slice(1) : item.label;
-    return ref;
   }
+
+  ref.package = isDependency(packages, ref.module.toLowerCase());
 
   return ref;
 }
@@ -224,7 +241,7 @@ export async function activate(context: vscode.ExtensionContext) {
         );
         console.log('Lock file found: ' + lockFileFound);
         console.log('Lock file at: ' + mixLockPath);
-        let mixDeps = [];
+        let mixDeps: MixDep[] = [];
         if (lockFileFound) {
           mixDeps = await parseMixDeps(mixLockPath);
           console.log('Mix deps count: ' + mixDeps.length);
@@ -241,20 +258,22 @@ export async function activate(context: vscode.ExtensionContext) {
           const word = te.document.getText(range);
           console.log(`Word on the line: ${word}`);
 
-          const completes: { items: Array<vscode.QuickPickItem> } =
+          const completes: vscode.CompletionList =
             await vscode.commands.executeCommand(
               'vscode.executeCompletionItemProvider',
               te.document.uri,
               range.end
             );
           if (completes && completes.items && completes.items.length > 0) {
-            const first: vscode.QuickPickItem = completes.items[0];
+            const first: vscode.QuickPickItem = {
+              label: completes.items[0].label as string,
+              detail: completes.items[0].detail,
+            };
             if (completes.items.length > 1) {
               const selected = await vscode.window.showQuickPick(
                 [
                   ...completes.items.map((e) => ({
-                    label: e.label,
-                    description: undefined,
+                    label: e.label as string,
                     detail: e.detail,
                   })),
                 ],
@@ -265,12 +284,12 @@ export async function activate(context: vscode.ExtensionContext) {
               if (selected) {
                 console.log('Selected: ');
                 console.log(selected);
-                docRef = updateDocRef(docRef, selected);
+                docRef = updateDocRef(docRef, selected, mixDeps);
               }
             } else {
               console.log('First: ');
               console.log(first);
-              docRef = updateDocRef(docRef, first);
+              docRef = updateDocRef(docRef, first, mixDeps);
             }
           }
         }
