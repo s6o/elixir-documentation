@@ -1,12 +1,13 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import crypto from 'node:crypto';
 import process from 'process';
-import path from 'path';
+import path from 'node:path';
 import * as fs from 'node:fs/promises';
-import { EOL } from 'os';
-import util from 'util';
-import { execFile as execNonPromise } from 'child_process';
+import { EOL } from 'node:os';
+import util from 'node:util';
+import { execFile as execNonPromise } from 'node:child_process';
 const execFile = util.promisify(execNonPromise);
 
 type MixDep = {
@@ -29,6 +30,10 @@ enum MainRef {
   Elixir,
   Erlang,
 }
+
+let cachedMixDeps: MixDep[] = [];
+let cachedMixPath: string | undefined = undefined;
+let cachedMixHash: string = '';
 
 async function initDocRef(): Promise<DocRef> {
   const ref = {
@@ -56,6 +61,23 @@ async function initDocRef(): Promise<DocRef> {
   return ref;
 }
 
+async function initMix() {
+  const te = vscode.window.activeTextEditor;
+  if (te) {
+    const [lockFileFound, mixLockPath] = await findMixLock(
+      te.document.fileName
+    );
+    console.log('Initial lock file found: ' + lockFileFound);
+    console.log('Initial lock file at: ' + mixLockPath);
+    if (lockFileFound) {
+      cachedMixPath = mixLockPath;
+      cachedMixDeps = await parseMixDeps(mixLockPath);
+    }
+  } else {
+    console.log('Could not find mix.lock');
+  }
+}
+
 async function findMixLock(filePath: string): Promise<[boolean, string]> {
   const cwd = process.cwd();
   let baseDir = path.dirname(filePath);
@@ -76,9 +98,24 @@ async function findMixLock(filePath: string): Promise<[boolean, string]> {
   }
 }
 
+async function mixContentsWithHash(
+  filePath: string
+): Promise<[string, string]> {
+  let contentHash = '';
+  const contents = await fs
+    .readFile(filePath, { encoding: 'utf-8' })
+    .then((buf) => {
+      contentHash = crypto.createHash('sha1').update(buf).digest('hex');
+      return buf.toString();
+    });
+  return [contentHash, contents];
+}
+
 async function parseMixDeps(filePath: string): Promise<MixDep[]> {
   try {
-    const contents = await fs.readFile(filePath).then((buf) => buf.toString());
+    const [contentHash, contents] = await mixContentsWithHash(filePath);
+    cachedMixHash = contentHash;
+    console.log(`Mix lock contents hash: ${cachedMixHash}`);
     const lines = contents.split(EOL);
     lines.shift();
     lines.pop();
@@ -203,6 +240,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   let docRef = await initDocRef();
+  await initMix();
 
   // The command has been defined in the package.json file
   // Now provide the implementation of the command with registerCommand
@@ -232,22 +270,33 @@ export async function activate(context: vscode.ExtensionContext) {
   let cmdLookup = vscode.commands.registerCommand(
     'elixir-documentation.lookup',
     async () => {
-      // Find text on current line
       const te = vscode.window.activeTextEditor;
       if (te) {
-        console.log(te.document.fileName);
-        const [lockFileFound, mixLockPath] = await findMixLock(
-          te.document.fileName
-        );
-        console.log('Lock file found: ' + lockFileFound);
-        console.log('Lock file at: ' + mixLockPath);
-        let mixDeps: MixDep[] = [];
-        if (lockFileFound) {
-          mixDeps = await parseMixDeps(mixLockPath);
-          console.log('Mix deps count: ' + mixDeps.length);
+        // Check if cached mix dependencies need to be updated
+        if (
+          cachedMixPath &&
+          te.document.fileName.startsWith(path.dirname(cachedMixPath)) === false
+        ) {
+          console.log(
+            'The mix project changed, update cached mixed dependencies ...'
+          );
+          await initMix();
+        } else {
+          // still the same mix.lock path, but have contents changed?
+          if (cachedMixPath) {
+            const [mixHash, _] = await mixContentsWithHash(cachedMixPath);
+            if (cachedMixHash !== mixHash) {
+              console.log(
+                "The project's mix.lock changed, update cached mixed dependencies ..."
+              );
+              await initMix();
+            }
+          } else {
+            console.error('Expected to find a mix.lock, but did not ... ?!');
+          }
         }
 
-        console.log(`Working dir: ${__dirname}`);
+        // Find text on current line
         const range = te.selection.isEmpty
           ? te.document.getWordRangeAtPosition(
               te.selection.active,
@@ -284,12 +333,12 @@ export async function activate(context: vscode.ExtensionContext) {
               if (selected) {
                 console.log('Selected: ');
                 console.log(selected);
-                docRef = updateDocRef(docRef, selected, mixDeps);
+                docRef = updateDocRef(docRef, selected, cachedMixDeps);
               }
             } else {
               console.log('First: ');
               console.log(first);
-              docRef = updateDocRef(docRef, first, mixDeps);
+              docRef = updateDocRef(docRef, first, cachedMixDeps);
             }
           }
         }
