@@ -141,8 +141,13 @@ async function parseMixDeps(filePath: string): Promise<MixDep[]> {
   }
 }
 
-function lineLookup(line: string, ref: DocRef): TryLSP {
-  let lsp = TryLSP.No;
+async function lineLookup(
+  line: string,
+  ref: DocRef
+): Promise<[DocRef, TryLSP]> {
+  let lookups: Array<DocRef & { label?: string; detail?: string }> = [];
+
+  // TODO: replace by an actual parser, so that more complex nested variants don't break things
   const patterns = {
     // look for pattern: :module.[.module[.m..]]function([arg[, arg...]])
     efa: /:[a-z]\w*\.[\w\.]+\([\w\s,%:"\{\}\[\]]*\)/gu,
@@ -153,20 +158,93 @@ function lineLookup(line: string, ref: DocRef): TryLSP {
     // look for pattern: %Module[.Module[...]]{[field: var[, field: var[, ...]]]}
     struct: /(?!%)[A-Z][\w\.]*(?=\{)/gu,
   };
+
   const isType = line.trim().startsWith('@spec');
+
   console.log(`EFA:`);
   console.log(line.match(patterns.efa));
+  line.match(patterns.efa)?.forEach((item: string) => {
+    const dref: DocRef & { label?: string; detail?: string } = {
+      ...ref,
+      isErl: true,
+    };
+    const dotIndex = item.lastIndexOf('.');
+    const pLft = item.indexOf('(');
+    const pRgt = item.lastIndexOf(')');
+    const fn = item.slice(dotIndex + 1, pLft);
+    const arity = item
+      .slice(pLft + 1, pRgt)
+      .split(',')
+      .filter((arg) => arg !== '').length;
+    dref.module = item.slice(1, dotIndex);
+    dref.fragment = `${fn}/${arity}`;
+    dref.label = item;
+    dref.detail = 'function';
+    lookups.push(dref);
+  });
+
   console.log(`\n`);
   console.log(`MFA:`);
   console.log(line.match(patterns.mfa));
+  line.match(patterns.mfa)?.forEach((item: string) => {
+    const dref: DocRef & { label?: string; detail?: string } = { ...ref };
+    const dotIndex = item.lastIndexOf('.');
+    const pLft = item.indexOf('(');
+    const pRgt = item.lastIndexOf(')');
+    const fn = item.slice(dotIndex + 1, pLft);
+    const arity = item
+      .slice(pLft + 1, pRgt)
+      .split(',')
+      .filter((arg) => arg !== '').length;
+    dref.module = item.slice(0, dotIndex);
+    dref.fragment = `${fn}/${arity}`;
+    dref.isType = isType || item.endsWith('t()') || item.endsWith('t');
+    dref.label = item;
+    dref.detail = 'function';
+    lookups.push(dref);
+  });
+
   console.log(`\n`);
   console.log(`MODULE:`);
   console.log(line.match(patterns.module));
+  line.match(patterns.module)?.forEach((item: string) => {
+    const dref: DocRef & { label?: string; detail?: string } = { ...ref };
+    dref.module = item.slice(item.lastIndexOf(' ') + 1);
+    dref.label = item;
+    dref.detail = 'module';
+    lookups.push(dref);
+  });
+
   console.log(`\n`);
   console.log(`STRUCT:`);
   console.log(line.match(patterns.struct));
-  console.log(`\n`);
-  return lsp;
+  line.match(patterns.struct)?.forEach((item: string) => {
+    const dref: DocRef & { label?: string; detail?: string } = {
+      ...ref,
+      module: item,
+    };
+    dref.label = item;
+    dref.detail = 'struct';
+    lookups.push(dref);
+  });
+
+  if (lookups.length === 0) {
+    return [ref, TryLSP.Yes];
+  }
+  if (lookups.length > 1) {
+    const selected = await vscode.window.showQuickPick(
+      lookups as vscode.QuickPickItem[],
+      { canPickMany: false }
+    );
+    if (selected !== undefined) {
+      const dref = selected as unknown;
+      return [dref as DocRef, TryLSP.No];
+    } else {
+      return [ref, TryLSP.Yes];
+    }
+  } else {
+    return [lookups[0], TryLSP.No];
+  }
 }
 
 async function lspLookup(
@@ -387,7 +465,8 @@ export async function activate(context: vscode.ExtensionContext) {
           const lookupLine = te.document.getText(range);
           console.log(`Lookup line: ${lookupLine}`);
 
-          const tryLSP = lineLookup(lookupLine, docRef);
+          const [dref, tryLSP] = await lineLookup(lookupLine, docRef);
+          docRef = dref;
           if (tryLSP) {
             await lspLookup(te, range, docRef);
           }
