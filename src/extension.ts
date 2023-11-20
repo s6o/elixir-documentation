@@ -35,6 +35,7 @@ enum MainRef {
   Erlang,
 }
 
+let baseDocRef: DocRef | undefined;
 let cachedMixDeps: MixDep[] = [];
 let cachedMixPath: string | undefined = undefined;
 let cachedMixHash: string = '';
@@ -66,7 +67,7 @@ async function initDocRef(): Promise<DocRef> {
   return ref;
 }
 
-async function initMix() {
+async function initMix(elixirVersion: string) {
   const te = vscode.window.activeTextEditor;
   if (te) {
     const [lockFileFound, mixLockPath] = await findMixLock(
@@ -76,7 +77,7 @@ async function initMix() {
     console.log('Initial lock file at: ' + mixLockPath);
     if (lockFileFound) {
       cachedMixPath = mixLockPath;
-      cachedMixDeps = await parseMixDeps(mixLockPath);
+      cachedMixDeps = await parseMixDeps(mixLockPath, elixirVersion);
     }
   } else {
     console.log('Could not find mix.lock');
@@ -116,7 +117,10 @@ async function mixContentsWithHash(
   return [contentHash, contents];
 }
 
-async function parseMixDeps(filePath: string): Promise<MixDep[]> {
+async function parseMixDeps(
+  filePath: string,
+  otpVersion: string
+): Promise<MixDep[]> {
   try {
     const [contentHash, contents] = await mixContentsWithHash(filePath);
     cachedMixHash = contentHash;
@@ -133,6 +137,10 @@ async function parseMixDeps(filePath: string): Promise<MixDep[]> {
         version: verParts[2].replaceAll('"', '').trim(),
       };
       return dep;
+    });
+    dependencies.push({
+      name: 'logger',
+      version: otpVersion,
     });
     return dependencies;
   } catch (e) {
@@ -394,8 +402,9 @@ export async function activate(context: vscode.ExtensionContext) {
     'Congratulations, your extension "Elixir/Erlang Documentation Lookup" is now active!'
   );
 
-  let docRef = await initDocRef();
-  await initMix();
+  baseDocRef = await initDocRef();
+  let docRef = { ...baseDocRef };
+  await initMix(baseDocRef.elixirVersion);
 
   // The command has been defined in the package.json file
   // Now provide the implementation of the command with registerCommand
@@ -426,6 +435,7 @@ export async function activate(context: vscode.ExtensionContext) {
     'elixir-documentation.lookup',
     async () => {
       const te = vscode.window.activeTextEditor;
+      docRef = { ...baseDocRef! };
       if (te) {
         // Check if cached mix dependencies need to be updated
         if (
@@ -435,7 +445,7 @@ export async function activate(context: vscode.ExtensionContext) {
           console.log(
             'The mix project changed, update cached mixed dependencies ...'
           );
-          await initMix();
+          await initMix(docRef.elixirVersion);
         } else {
           // still the same mix.lock path, but have contents changed?
           if (cachedMixPath) {
@@ -444,7 +454,7 @@ export async function activate(context: vscode.ExtensionContext) {
               console.log(
                 "The project's mix.lock changed, update cached mixed dependencies ..."
               );
-              await initMix();
+              await initMix(docRef.elixirVersion);
             }
           } else {
             console.error('Expected to find a mix.lock, but did not ... ?!');
