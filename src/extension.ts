@@ -200,6 +200,7 @@ function updateDocRef(
     item.detail !== null && item.detail === 'exception';
   const isMacro: boolean = item.detail?.startsWith('(macro)') || false;
   const isModule: boolean = item.detail !== null && item.detail === 'module';
+  const isStruct: boolean = item.detail !== null && item.detail === 'struct';
 
   if (isBehaviour) {
     ref.module = item.label.replace(' (behaviour)', '');
@@ -231,6 +232,10 @@ function updateDocRef(
   if (isModule) {
     ref.isErl = item.label.startsWith(':');
     ref.module = ref.isErl ? item.label.slice(1) : item.label;
+  }
+
+  if (isStruct) {
+    ref.module = item.label.replace(' (struct)', '');
   }
 
   ref.package = isDependency(packages, ref.module.toLowerCase());
@@ -325,6 +330,7 @@ export async function activate(context: vscode.ExtensionContext) {
           // Currently if LSP does not know what to complete it gives a whole
           // list of suggestions, mostly non-sensical for documentation lookup,
           // thus arbitarily limit and switch to line parsing when the list is too long
+          // TODO: filter out non-sensical/ambiguous completion suggestions
           if (
             completes &&
             completes.items &&
