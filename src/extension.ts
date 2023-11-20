@@ -161,8 +161,6 @@ async function lineLookup(
 
   const isType = line.trim().startsWith('@spec');
 
-  console.log(`EFA:`);
-  console.log(line.match(patterns.efa));
   line.match(patterns.efa)?.forEach((item: string) => {
     const dref: DocRef & { label?: string; detail?: string } = {
       ...ref,
@@ -179,12 +177,10 @@ async function lineLookup(
     dref.module = item.slice(1, dotIndex);
     dref.fragment = `${fn}/${arity}`;
     dref.label = item;
-    dref.detail = 'function';
+    dref.detail = `function - ${dref.module}.${fn}/${arity}`;
     lookups.push(dref);
   });
 
-  console.log(`\n`);
-  console.log(`MFA:`);
   console.log(line.match(patterns.mfa));
   line.match(patterns.mfa)?.forEach((item: string) => {
     const dref: DocRef & { label?: string; detail?: string } = { ...ref };
@@ -200,12 +196,12 @@ async function lineLookup(
     dref.fragment = `${fn}/${arity}`;
     dref.isType = isType || item.endsWith('t()') || item.endsWith('t');
     dref.label = item;
-    dref.detail = 'function';
+    dref.detail = `${dref.isType ? 'type' : 'function'} - ${
+      dref.module
+    }.${fn}/${arity}`;
     lookups.push(dref);
   });
 
-  console.log(`\n`);
-  console.log(`MODULE:`);
   console.log(line.match(patterns.module));
   line.match(patterns.module)?.forEach((item: string) => {
     const dref: DocRef & { label?: string; detail?: string } = { ...ref };
@@ -215,8 +211,6 @@ async function lineLookup(
     lookups.push(dref);
   });
 
-  console.log(`\n`);
-  console.log(`STRUCT:`);
   console.log(line.match(patterns.struct));
   line.match(patterns.struct)?.forEach((item: string) => {
     const dref: DocRef & { label?: string; detail?: string } = {
@@ -229,7 +223,8 @@ async function lineLookup(
   });
 
   if (lookups.length === 0) {
-    return [ref, TryLSP.Yes];
+    const pkg = isDependency(cachedMixDeps, ref.module.toLowerCase());
+    return [{ ...ref, package: pkg }, TryLSP.Yes];
   }
   if (lookups.length > 1) {
     const selected = await vscode.window.showQuickPick(
@@ -237,13 +232,16 @@ async function lineLookup(
       { canPickMany: false }
     );
     if (selected !== undefined) {
-      const dref = selected as unknown;
-      return [dref as DocRef, TryLSP.No];
+      const dref = selected as unknown as DocRef;
+      const pkg = isDependency(cachedMixDeps, dref.module.toLowerCase());
+      return [{ ...dref, package: pkg }, TryLSP.No];
     } else {
-      return [ref, TryLSP.Yes];
+      const pkg = isDependency(cachedMixDeps, ref.module.toLowerCase());
+      return [{ ...ref, package: pkg }, TryLSP.Yes];
     }
   } else {
-    return [lookups[0], TryLSP.No];
+    const pkg = isDependency(cachedMixDeps, lookups[0].module.toLowerCase());
+    return [{ ...lookups[0], package: pkg }, TryLSP.No];
   }
 }
 
@@ -292,14 +290,14 @@ function isDependency(
   packages: MixDep[],
   packageName: string
 ): undefined | MixDep {
-  return packages.find((dep) => dep.name === packageName);
+  return packages.find((dep) => packageName.startsWith(dep.name));
 }
 
 function toDocUrl(ref: DocRef): string {
   if (ref.package) {
     return `${ref.hexBase}/${ref.package.name}/${ref.package.version}/${
       ref.module
-    }.html${ref.fragment ? `#${ref.fragment}` : ''}`;
+    }.html${ref.fragment ? `#${ref.isType ? 't:' : ''}${ref.fragment}` : ''}`;
   } else {
     if (ref.isErl) {
       return `${ref.erlBase}/${ref.otpVersion}/man/${ref.module}${
@@ -307,7 +305,7 @@ function toDocUrl(ref: DocRef): string {
       }`;
     } else {
       return `${ref.hexBase}/elixir/${ref.elixirVersion}/${ref.module}.html${
-        ref.fragment ? `#${ref.fragment}` : ''
+        ref.fragment ? `#${ref.isType ? 't:' : ''}${ref.fragment}` : ''
       }`;
     }
   }
