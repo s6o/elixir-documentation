@@ -1,5 +1,3 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import crypto from 'node:crypto';
 import process from 'process';
@@ -23,6 +21,7 @@ type DocRef = {
   module: string;
   fragment: string;
   isErl: boolean;
+  isType: boolean;
   package: undefined | MixDep;
 };
 
@@ -44,6 +43,7 @@ async function initDocRef(): Promise<DocRef> {
     module: 'Kernel',
     fragment: '',
     isErl: false,
+    isType: false,
     package: undefined,
   };
 
@@ -136,6 +136,14 @@ async function parseMixDeps(filePath: string): Promise<MixDep[]> {
   }
 }
 
+function parseLineToDocRef(line: string, ref: DocRef): DocRef {
+  // starts with @spec -> isType = true
+  // look for pattern: [alias|@behaviour|import|require|use] Module[.Modules[...]]
+  // look for pattern: Module.function()
+  // look for pattern: Module.function(arg, arg, ...)
+  return ref;
+}
+
 function isDependency(
   packages: MixDep[],
   packageName: string
@@ -184,7 +192,7 @@ function updateDocRef(
   ref: DocRef,
   item: vscode.QuickPickItem,
   packages: MixDep[]
-) {
+): DocRef {
   const isFunction: boolean = item.detail?.startsWith('(function)') || false;
   const isBehaviour: boolean =
     item.detail !== null && item.detail === 'behaviour';
@@ -296,16 +304,17 @@ export async function activate(context: vscode.ExtensionContext) {
           }
         }
 
-        // Find text on current line
+        // TODO: capture alias lines at the top of the file
+        // Capture the whole line for parsing of lookup suggestions if LSP fails
         const range = te.selection.isEmpty
           ? te.document.getWordRangeAtPosition(
               te.selection.active,
-              RegExp('[\\w\\.()\\/, ]+')
+              RegExp('^.+$')
             )
           : te.selection;
         if (range) {
-          const word = te.document.getText(range);
-          console.log(`Word on the line: ${word}`);
+          const lookupLine = te.document.getText(range);
+          console.log(`Lookup line: ${lookupLine}`);
 
           const completes: vscode.CompletionList =
             await vscode.commands.executeCommand(
@@ -313,7 +322,15 @@ export async function activate(context: vscode.ExtensionContext) {
               te.document.uri,
               range.end
             );
-          if (completes && completes.items && completes.items.length > 0) {
+          // Currently if LSP does not know what to complete it gives a whole
+          // list of suggestions, mostly non-sensical for documentation lookup,
+          // thus arbitarily limit and switch to line parsing when the list is too long
+          if (
+            completes &&
+            completes.items &&
+            completes.items.length > 0 &&
+            completes.items.length <= 5
+          ) {
             const first: vscode.QuickPickItem = {
               label: completes.items[0].label as string,
               detail: completes.items[0].detail,
@@ -341,6 +358,7 @@ export async function activate(context: vscode.ExtensionContext) {
               docRef = updateDocRef(docRef, first, cachedMixDeps);
             }
           }
+          docRef = parseLineToDocRef(lookupLine, docRef);
         }
       }
       // The code you place here will be executed every time your command is executed
