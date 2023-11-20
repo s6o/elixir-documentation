@@ -34,6 +34,8 @@ This extension contributes the following settings:
 
 ## Known Issues
 
+* Arity of function usage without default argument overrides is incorrect (without LSP)
+
 ## Release Notes
 
 ### 0.0.1
