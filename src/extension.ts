@@ -25,6 +25,11 @@ type DocRef = {
   package: undefined | MixDep;
 };
 
+enum TryLSP {
+  No,
+  Yes,
+}
+
 enum MainRef {
   Elixir,
   Erlang,
@@ -136,12 +141,73 @@ async function parseMixDeps(filePath: string): Promise<MixDep[]> {
   }
 }
 
-function parseLineToDocRef(line: string, ref: DocRef): DocRef {
-  // starts with @spec -> isType = true
-  // look for pattern: [alias|@behaviour|import|require|use] Module[.Modules[...]]
-  // look for pattern: Module.function()
-  // look for pattern: Module.function(arg, arg, ...)
-  return ref;
+function lineLookup(line: string, ref: DocRef): TryLSP {
+  let lsp = TryLSP.No;
+  const patterns = {
+    // look for pattern: :module.[.module[.m..]]function([arg[, arg...]])
+    efa: /:[a-z]\w*\.[\w\.]+\([\w\s,%:"\{\}\[\]]*\)/gu,
+    // look for pattern: Module.[.Module[.M..]]function([arg[, arg...]])
+    mfa: /[A-Z]\w*\.[\w\.]+\([\w\s,%:"\{\}\[\]]*\)/gu,
+    // look for pattern: [alias|@behaviour|import|require|use] Module[.Modules[...]]
+    module: /(?:alias|@behaviour|import|require|use)\s+[A-Z][\w\.]*/gu,
+    // look for pattern: %Module[.Module[...]]{[field: var[, field: var[, ...]]]}
+    struct: /(?!%)[A-Z][\w\.]*(?=\{)/gu,
+  };
+  const isType = line.trim().startsWith('@spec');
+  console.log(`EFA:`);
+  console.log(line.match(patterns.efa));
+  console.log(`\n`);
+  console.log(`MFA:`);
+  console.log(line.match(patterns.mfa));
+  console.log(`\n`);
+  console.log(`MODULE:`);
+  console.log(line.match(patterns.module));
+  console.log(`\n`);
+  console.log(`STRUCT:`);
+  console.log(line.match(patterns.struct));
+  console.log(`\n`);
+  return lsp;
+}
+
+async function lspLookup(
+  te: vscode.TextEditor,
+  range: vscode.Range,
+  docRef: DocRef
+): Promise<void> {
+  const completes: vscode.CompletionList = await vscode.commands.executeCommand(
+    'vscode.executeCompletionItemProvider',
+    te.document.uri,
+    range.end
+  );
+  // Try LSP lookup if line parsing did not yield actionable results
+  if (completes && completes.items && completes.items.length > 0) {
+    const first: vscode.QuickPickItem = {
+      label: completes.items[0].label as string,
+      detail: completes.items[0].detail,
+    };
+    if (completes.items.length > 1) {
+      const selected = await vscode.window.showQuickPick(
+        [
+          ...completes.items.map((e) => ({
+            label: e.label as string,
+            detail: e.detail,
+          })),
+        ],
+        {
+          canPickMany: false,
+        }
+      );
+      if (selected) {
+        console.log('Selected: ');
+        console.log(selected);
+        docRef = updateDocRef(docRef, selected, cachedMixDeps);
+      }
+    } else {
+      console.log('First: ');
+      console.log(first);
+      docRef = updateDocRef(docRef, first, cachedMixDeps);
+    }
+  }
 }
 
 function isDependency(
@@ -310,7 +376,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         // TODO: capture alias lines at the top of the file
-        // Capture the whole line for parsing of lookup suggestions if LSP fails
+        // Capture the whole line for parsing of lookup suggestions
         const range = te.selection.isEmpty
           ? te.document.getWordRangeAtPosition(
               te.selection.active,
@@ -321,50 +387,10 @@ export async function activate(context: vscode.ExtensionContext) {
           const lookupLine = te.document.getText(range);
           console.log(`Lookup line: ${lookupLine}`);
 
-          const completes: vscode.CompletionList =
-            await vscode.commands.executeCommand(
-              'vscode.executeCompletionItemProvider',
-              te.document.uri,
-              range.end
-            );
-          // Currently if LSP does not know what to complete it gives a whole
-          // list of suggestions, mostly non-sensical for documentation lookup,
-          // thus arbitarily limit and switch to line parsing when the list is too long
-          // TODO: filter out non-sensical/ambiguous completion suggestions
-          if (
-            completes &&
-            completes.items &&
-            completes.items.length > 0 &&
-            completes.items.length <= 5
-          ) {
-            const first: vscode.QuickPickItem = {
-              label: completes.items[0].label as string,
-              detail: completes.items[0].detail,
-            };
-            if (completes.items.length > 1) {
-              const selected = await vscode.window.showQuickPick(
-                [
-                  ...completes.items.map((e) => ({
-                    label: e.label as string,
-                    detail: e.detail,
-                  })),
-                ],
-                {
-                  canPickMany: false,
-                }
-              );
-              if (selected) {
-                console.log('Selected: ');
-                console.log(selected);
-                docRef = updateDocRef(docRef, selected, cachedMixDeps);
-              }
-            } else {
-              console.log('First: ');
-              console.log(first);
-              docRef = updateDocRef(docRef, first, cachedMixDeps);
-            }
+          const tryLSP = lineLookup(lookupLine, docRef);
+          if (tryLSP) {
+            await lspLookup(te, range, docRef);
           }
-          docRef = parseLineToDocRef(lookupLine, docRef);
         }
       }
       // The code you place here will be executed every time your command is executed
