@@ -139,6 +139,10 @@ async function parseMixDeps(
       return dep;
     });
     dependencies.push({
+      name: 'ex_unit',
+      version: otpVersion,
+    });
+    dependencies.push({
       name: 'logger',
       version: otpVersion,
     });
@@ -156,11 +160,15 @@ async function lineLookup(
   let lookups: Array<DocRef & { label?: string; detail?: string }> = [];
 
   // TODO: replace by an actual parser, so that more complex nested variants don't break things
+  // or
+  // 1) get partial efa, mfa matches ending at(/with) '('
+  // 2) for each parital match move cursor to position before '('
+  // 3) run LSP completion request, aggregate results
   const patterns = {
     // look for pattern: :module.[.module[.m..]]function([arg[, arg...]])
-    efa: /:[a-z]\w*\.[\w\.]+\([\w\s,%:"\{\}\[\]]*\)/gu,
+    efa: /:[a-z]\w*\.[\w\.]+\([\w\s,%:"-\/\{\}\[\]]*\)/gu,
     // look for pattern: Module.[.Module[.M..]]function([arg[, arg...]])
-    mfa: /[A-Z]\w*\.[\w\.]+\([\w\s,%:"\{\}\[\]]*\)/gu,
+    mfa: /[A-Z]\w*\.[\w\.!\?]+\([\w\s,%:"-\/\{\}\[\]]*\)/gu,
     // look for pattern: [alias|@behaviour|import|require|use] Module[.Modules[...]]
     module: /(?:alias|@behaviour|import|require|use)\s+[A-Z][\w\.]*/gu,
     // look for pattern: %Module[.Module[...]]{[field: var[, field: var[, ...]]]}
@@ -169,6 +177,7 @@ async function lineLookup(
 
   const isType = line.trim().startsWith('@spec');
 
+  console.log(line.match(patterns.efa));
   line.match(patterns.efa)?.forEach((item: string) => {
     const dref: DocRef & { label?: string; detail?: string } = {
       ...ref,
@@ -231,7 +240,7 @@ async function lineLookup(
   });
 
   if (lookups.length === 0) {
-    const pkg = isDependency(cachedMixDeps, ref.module.toLowerCase());
+    const pkg = isDependency(cachedMixDeps, ref.module);
     return [{ ...ref, package: pkg }, TryLSP.Yes];
   }
   if (lookups.length > 1) {
@@ -241,14 +250,14 @@ async function lineLookup(
     );
     if (selected !== undefined) {
       const dref = selected as unknown as DocRef;
-      const pkg = isDependency(cachedMixDeps, dref.module.toLowerCase());
+      const pkg = isDependency(cachedMixDeps, dref.module);
       return [{ ...dref, package: pkg }, TryLSP.No];
     } else {
-      const pkg = isDependency(cachedMixDeps, ref.module.toLowerCase());
+      const pkg = isDependency(cachedMixDeps, ref.module);
       return [{ ...ref, package: pkg }, TryLSP.Yes];
     }
   } else {
-    const pkg = isDependency(cachedMixDeps, lookups[0].module.toLowerCase());
+    const pkg = isDependency(cachedMixDeps, lookups[0].module);
     return [{ ...lookups[0], package: pkg }, TryLSP.No];
   }
 }
@@ -258,47 +267,62 @@ async function lspLookup(
   range: vscode.Range,
   docRef: DocRef
 ): Promise<void> {
-  const completes: vscode.CompletionList = await vscode.commands.executeCommand(
-    'vscode.executeCompletionItemProvider',
-    te.document.uri,
-    range.end
-  );
+  let completes: vscode.CompletionList = new vscode.CompletionList([], true);
+  try {
+    completes = await vscode.commands.executeCommand(
+      'vscode.executeCompletionItemProvider',
+      te.document.uri,
+      range.end
+    );
+  } catch {
+    console.log(`LSP lookup failure.`);
+  }
   // Try LSP lookup if line parsing did not yield actionable results
   if (completes && completes.items && completes.items.length > 0) {
-    const first: vscode.QuickPickItem = {
-      label: completes.items[0].label as string,
-      detail: completes.items[0].detail,
-    };
-    if (completes.items.length > 1) {
-      const selected = await vscode.window.showQuickPick(
-        [
-          ...completes.items.map((e) => ({
-            label: e.label as string,
-            detail: e.detail,
-          })),
-        ],
-        {
-          canPickMany: false,
+    const filtered = completes.items.filter(
+      (item) =>
+        item.detail !== undefined &&
+        item.detail?.indexOf('Elixir snippets') < -1
+    );
+    if (filtered.length > 0) {
+      const first: vscode.QuickPickItem = {
+        label: filtered[0].label as string,
+        detail: filtered[0].detail,
+      };
+      if (filtered.length > 1) {
+        const selected = await vscode.window.showQuickPick(
+          [
+            ...filtered.map((e) => ({
+              label: e.label as string,
+              detail: e.detail,
+            })),
+          ],
+          {
+            canPickMany: false,
+          }
+        );
+        if (selected) {
+          console.log('Selected: ');
+          console.log(selected);
+          docRef = updateDocRef(docRef, selected, cachedMixDeps);
         }
-      );
-      if (selected) {
-        console.log('Selected: ');
-        console.log(selected);
-        docRef = updateDocRef(docRef, selected, cachedMixDeps);
+      } else {
+        console.log('First: ');
+        console.log(first);
+        docRef = updateDocRef(docRef, first, cachedMixDeps);
       }
-    } else {
-      console.log('First: ');
-      console.log(first);
-      docRef = updateDocRef(docRef, first, cachedMixDeps);
     }
   }
 }
 
-function isDependency(
-  packages: MixDep[],
-  packageName: string
-): undefined | MixDep {
-  return packages.find((dep) => packageName.startsWith(dep.name));
+function isDependency(packages: MixDep[], module: string): undefined | MixDep {
+  const pkgSnakeCase = module
+    .split(/(?=[A-Z][a-z])/g)
+    .map((s) => `_${s.toLowerCase()}`)
+    .join('')
+    .slice(1)
+    .replace(/\./g, '');
+  return packages.find((dep) => pkgSnakeCase.startsWith(dep.name));
 }
 
 function toDocUrl(ref: DocRef): string {
@@ -388,7 +412,7 @@ function updateDocRef(
     ref.module = item.label.replace(' (struct)', '');
   }
 
-  ref.package = isDependency(packages, ref.module.toLowerCase());
+  ref.package = isDependency(packages, ref.module);
 
   return ref;
 }
@@ -437,6 +461,10 @@ export async function activate(context: vscode.ExtensionContext) {
       const te = vscode.window.activeTextEditor;
       docRef = { ...baseDocRef! };
       if (te) {
+        // In test files default module to ExUnit.Case
+        if (te.document.fileName.toLowerCase().endsWith('.exs')) {
+          docRef.module = 'ExUnit.Case';
+        }
         // Check if cached mix dependencies need to be updated
         if (
           cachedMixPath &&
@@ -475,7 +503,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
           const [dref, tryLSP] = await lineLookup(lookupLine, docRef);
           docRef = dref;
-          if (tryLSP) {
+          if (tryLSP === TryLSP.Yes) {
             await lspLookup(te, range, docRef);
           }
         }
