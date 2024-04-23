@@ -1,6 +1,6 @@
 # Elixir Documentation
 
-This extension provides to commands:
+This extension provides the commands:
 
 * Elixir Documentation
 * Erlang/OTP Documentation
