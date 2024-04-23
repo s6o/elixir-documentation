@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as parser from './line_parser';
 import crypto from 'node:crypto';
 import process from 'process';
 import path from 'node:path';
@@ -24,11 +25,6 @@ type DocRef = {
   isType: boolean;
   package: undefined | MixDep;
 };
-
-enum TryLSP {
-  No,
-  Yes,
-}
 
 enum MainRef {
   Elixir,
@@ -153,6 +149,7 @@ async function parseMixDeps(
   }
 }
 
+/*
 async function lineLookup(
   line: string,
   ref: DocRef
@@ -164,16 +161,19 @@ async function lineLookup(
   // 1) get partial efa, mfa matches ending at(/with) '('
   // 2) for each parital match move cursor to position before '('
   // 3) run LSP completion request, aggregate results
-  const patterns = {
-    // look for pattern: :module.[.module[.m..]]function([arg[, arg...]])
-    efa: /:[a-z]\w*\.[\w\.]+\([\w\s,%:"-\/\{\}\[\]]*\)/gu,
-    // look for pattern: Module.[.Module[.M..]]function([arg[, arg...]])
-    mfa: /[A-Z]\w*\.[\w\.!\?]+\([\w\s,%:"-\/\{\}\[\]]*\)/gu,
-    // look for pattern: [alias|@behaviour|import|require|use] Module[.Modules[...]]
-    module: /(?:alias|@behaviour|import|require|use)\s+[A-Z][\w\.]*/gu,
-    // look for pattern: %Module[.Module[...]]{[field: var[, field: var[, ...]]]}
-    struct: /(?!%)[A-Z][\w\.]*(?=\{)/gu,
-  };
+  
+//  const patterns = {
+//    // look for pattern: :module.[.module[.m..]]function([arg[, arg...]])
+//    //efa: /:[a-z]\w*\.[\w\.]+\([\w\s,%:"-\/\{\}\[\]]*\)/gu,
+//    efa: /:[a-z]\w*\.[\w\.]+\(/gu,
+//    // look for pattern: Module.[.Module[.M..]]function([arg[, arg...]])
+//    //mfa: /[A-Z]\w*\.[\w\.!\?]+\([\w\s,%:"-\/\{\}\[\]]*\)/gu,
+//    mfa: /[A-Z]\w*\.[\w\.!\?]+\(/gu,
+//    // look for pattern: [alias|@behaviour|import|require|use] Module[.Modules[...]]
+//    module: /(?:alias|@behaviour|import|require|use)\s+[A-Z][\w\.]\*\/gu,
+//    // look for pattern: %Module[.Module[...]]{[field: var[, field: var[, ...]]]}
+//    struct: /(?!%)[A-Z][\w\.]*(?=\{)/gu,
+//  };
 
   const isType = line.trim().startsWith('@spec');
 
@@ -261,56 +261,81 @@ async function lineLookup(
     return [{ ...lookups[0], package: pkg }, TryLSP.No];
   }
 }
+*/
 
-async function lspLookup(
+async function completedItems(
   te: vscode.TextEditor,
-  range: vscode.Range,
-  docRef: DocRef
-): Promise<void> {
+  lineToken: parser.LineToken
+): Promise<vscode.QuickPickItem[]> {
   let completes: vscode.CompletionList = new vscode.CompletionList([], true);
   try {
     completes = await vscode.commands.executeCommand(
       'vscode.executeCompletionItemProvider',
       te.document.uri,
-      range.end
+      new vscode.Position(
+        lineToken.range.end.line,
+        lineToken.range.end.character + 1
+      )
     );
-  } catch {
-    console.log(`LSP lookup failure.`);
-  }
-  // Try LSP lookup if line parsing did not yield actionable results
-  if (completes && completes.items && completes.items.length > 0) {
-    const filtered = completes.items.filter(
-      (item) =>
-        item.detail !== undefined &&
-        item.detail?.indexOf('Elixir snippets') < -1
-    );
-    if (filtered.length > 0) {
-      const first: vscode.QuickPickItem = {
-        label: filtered[0].label as string,
-        detail: filtered[0].detail,
-      };
-      if (filtered.length > 1) {
-        const selected = await vscode.window.showQuickPick(
-          [
-            ...filtered.map((e) => ({
-              label: e.label as string,
-              detail: e.detail,
-            })),
-          ],
-          {
-            canPickMany: false,
-          }
-        );
-        if (selected) {
-          console.log('Selected: ');
-          console.log(selected);
-          docRef = updateDocRef(docRef, selected, cachedMixDeps);
-        }
-      } else {
-        console.log('First: ');
-        console.log(first);
-        docRef = updateDocRef(docRef, first, cachedMixDeps);
+    // Clean LSP completions from Elixir snippets
+    if (completes && completes.items && completes.items.length > 0) {
+      const filtered = completes.items.filter(
+        (item) =>
+          item.detail !== undefined &&
+          item.detail.indexOf('Elixir snippets') < 0
+      );
+      if (filtered.length > 0) {
+        return filtered
+          .map((e) => ({
+            label: e.label as string,
+            detail: e.detail,
+          }))
+          .slice(0, 20);
       }
+    }
+  } catch (e) {
+    console.log(
+      `Completed items lookup failure for lineToken: ${JSON.stringify(
+        lineToken
+      )}`
+    );
+  }
+  return [];
+}
+
+async function lspLookup(
+  docRef: DocRef,
+  te: vscode.TextEditor,
+  lineTokens: parser.LineToken[]
+): Promise<void> {
+  let lspPicks: vscode.QuickPickItem[] = [];
+
+  let lookups = lineTokens.map((lineToken) => completedItems(te, lineToken));
+  let completions = await Promise.all(lookups);
+
+  completions.forEach((items) => {
+    lspPicks = [...lspPicks, ...items];
+  });
+
+  console.log(`\nQuick picks: ${JSON.stringify(lspPicks)}`);
+  if (lspPicks.length > 0) {
+    const first = lspPicks[0];
+    if (lspPicks.length > 1) {
+      const selected = await vscode.window.showQuickPick(
+        lspPicks.slice(0, 10),
+        {
+          canPickMany: false,
+        }
+      );
+      if (selected) {
+        console.log('LSP quickpick: ');
+        console.log(selected);
+        docRef = updateDocRef(docRef, selected, cachedMixDeps);
+      }
+    } else {
+      console.log('LSP first: ');
+      console.log(first);
+      docRef = updateDocRef(docRef, first, cachedMixDeps);
     }
   }
 }
@@ -489,7 +514,6 @@ export async function activate(context: vscode.ExtensionContext) {
           }
         }
 
-        // TODO: capture alias lines at the top of the file
         // Capture the whole line for parsing of lookup suggestions
         const range = te.selection.isEmpty
           ? te.document.getWordRangeAtPosition(
@@ -499,13 +523,10 @@ export async function activate(context: vscode.ExtensionContext) {
           : te.selection;
         if (range) {
           const lookupLine = te.document.getText(range);
+          let lineTokens = parser.lineParser(lookupLine, range);
           console.log(`Lookup line: ${lookupLine}`);
-
-          const [dref, tryLSP] = await lineLookup(lookupLine, docRef);
-          docRef = dref;
-          if (tryLSP === TryLSP.Yes) {
-            await lspLookup(te, range, docRef);
-          }
+          console.log(`Line tokens: ${JSON.stringify(lineTokens)}`);
+          await lspLookup(docRef, te, lineTokens);
         }
       }
       // The code you place here will be executed every time your command is executed
