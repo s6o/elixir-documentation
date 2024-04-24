@@ -12,7 +12,11 @@ export enum LineTokenState {
   Closed,
 }
 
-export function lineParser(line: string, lineRange: vscode.Range): LineToken[] {
+export function lineParser(
+  line: string,
+  lineRange: vscode.Range,
+  cursor: vscode.Position
+): LineToken[] {
   const tokenSplitters = [' ', '(', ',', ')', ';'];
   let tokens: LineToken[] = [];
 
@@ -73,5 +77,21 @@ export function lineParser(line: string, lineRange: vscode.Range): LineToken[] {
     index += 1;
   }
 
+  // If a token range is containing the active cursor position make it the first
+  // item in the returned tokens
+  let cursorIndex = -1;
+  tokens.forEach((item: LineToken, index: number) => {
+    if (
+      item.range.start.character <= cursor.character &&
+      item.range.end.character >= cursor.character
+    ) {
+      cursorIndex = index;
+    }
+  });
+  if (cursorIndex > 0) {
+    let cursorItem = { ...tokens[cursorIndex] };
+    tokens[cursorIndex] = tokens[0];
+    tokens[0] = cursorItem;
+  }
   return tokens;
 }

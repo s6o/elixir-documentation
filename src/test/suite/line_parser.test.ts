@@ -9,7 +9,11 @@ suite('Line parser tests', () => {
       new vscode.Position(0, 0),
       new vscode.Position(0, 0)
     );
-    const tokens1 = parser.lineParser(inputLine1, range1);
+    const tokens1 = parser.lineParser(
+      inputLine1,
+      range1,
+      new vscode.Position(0, 0)
+    );
     assert.deepEqual(tokens1, []);
 
     const inputLine2 = '       ';
@@ -17,7 +21,11 @@ suite('Line parser tests', () => {
       new vscode.Position(0, 0),
       new vscode.Position(0, 6)
     );
-    const tokens2 = parser.lineParser(inputLine2, range2);
+    const tokens2 = parser.lineParser(
+      inputLine2,
+      range2,
+      new vscode.Position(0, 0)
+    );
     assert.deepEqual(tokens2, []);
   });
 
@@ -27,21 +35,25 @@ suite('Line parser tests', () => {
       new vscode.Position(0, 0),
       new vscode.Position(0, 11)
     );
-    const tokens1 = parser.lineParser(inputLine1, range1);
+    const tokens1 = parser.lineParser(
+      inputLine1,
+      range1,
+      new vscode.Position(0, 8)
+    );
     assert.deepEqual(tokens1, [
-      {
-        phrase: 'use',
-        range: new vscode.Range(
-          new vscode.Position(0, 2),
-          new vscode.Position(0, 4)
-        ),
-        state: parser.LineTokenState.Closed,
-      },
       {
         phrase: 'Agent',
         range: new vscode.Range(
           new vscode.Position(0, 6),
           new vscode.Position(0, 10)
+        ),
+        state: parser.LineTokenState.Closed,
+      },
+      {
+        phrase: 'use',
+        range: new vscode.Range(
+          new vscode.Position(0, 2),
+          new vscode.Position(0, 4)
         ),
         state: parser.LineTokenState.Closed,
       },
@@ -52,7 +64,11 @@ suite('Line parser tests', () => {
       new vscode.Position(0, 0),
       new vscode.Position(0, 16)
     );
-    const tokens2 = parser.lineParser(inputLine2, range2);
+    const tokens2 = parser.lineParser(
+      inputLine2,
+      range2,
+      new vscode.Position(0, 0)
+    );
     assert.deepEqual(tokens2, [
       {
         phrase: 'require',
@@ -79,7 +95,11 @@ suite('Line parser tests', () => {
       new vscode.Position(0, 0),
       new vscode.Position(0, 28)
     );
-    const tokens1 = parser.lineParser(inputLine1, range1);
+    const tokens1 = parser.lineParser(
+      inputLine1,
+      range1,
+      new vscode.Position(0, 0)
+    );
     assert.deepEqual(tokens1, [
       {
         phrase: '|>',
@@ -120,7 +140,11 @@ suite('Line parser tests', () => {
       new vscode.Position(0, 0),
       new vscode.Position(0, 37)
     );
-    const tokens2 = parser.lineParser(inputLine2, range2);
+    const tokens2 = parser.lineParser(
+      inputLine2,
+      range2,
+      new vscode.Position(0, 5)
+    );
     assert.deepEqual(tokens2, [
       {
         phrase: 'Agent.get',

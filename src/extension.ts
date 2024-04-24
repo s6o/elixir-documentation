@@ -530,7 +530,11 @@ export async function activate(context: vscode.ExtensionContext) {
           : te.selection;
         if (range) {
           const lookupLine = te.document.getText(range);
-          let lineTokens = parser.lineParser(lookupLine, range);
+          let lineTokens = parser.lineParser(
+            lookupLine,
+            range,
+            te.selection.active
+          );
           console.log(`Lookup line: ${lookupLine}`);
           console.log(`Line tokens: ${JSON.stringify(lineTokens)}`);
           await lspLookup(docRef, te, lineTokens);
