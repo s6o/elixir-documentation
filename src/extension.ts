@@ -320,6 +320,9 @@ function updateDocRef(
     }
     ref.fragment = `${trimmedLabel}${arity}`;
     ref.fragment = ref.isErl ? ref.fragment.replace('/', '-') : ref.fragment;
+    if (ref.fragment.includes('|')) {
+      ref.fragment = ref.fragment.replaceAll('|', encodeURIComponent('|'));
+    }
   }
 
   if (isModule) {
