@@ -171,7 +171,8 @@ async function completedItems(
       const filtered = completes.items.filter(
         (item) =>
           item.detail !== undefined &&
-          item.detail.indexOf('Elixir snippets') < 0
+          item.detail.indexOf('Elixir snippets') < 0 &&
+          item.detail.includes(lineToken.phrase)
       );
       if (filtered.length > 0) {
         return filtered
@@ -179,7 +180,7 @@ async function completedItems(
             label: lineToken.phrase,
             detail: e.detail,
           }))
-          .slice(0, 20);
+          .slice(0, 5);
       }
     }
   } catch (e) {
