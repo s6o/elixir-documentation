@@ -279,6 +279,9 @@ async function completedItems(
     );
     // Clean LSP completions from Elixir snippets
     if (completes && completes.items && completes.items.length > 0) {
+      console.log(
+        `\nCompletes ${lineToken.phrase}: ${JSON.stringify(completes.items)}`
+      );
       const filtered = completes.items.filter(
         (item) =>
           item.detail !== undefined &&
@@ -328,9 +331,10 @@ async function lspLookup(
         }
       );
       if (selected) {
-        console.log('LSP quickpick: ');
+        console.log('\nLSP quickpick: ');
         console.log(selected);
         docRef = updateDocRef(docRef, selected, cachedMixDeps);
+        console.log(`\nDocRef: ${JSON.stringify(docRef)}`);
       }
     } else {
       console.log('LSP first: ');
