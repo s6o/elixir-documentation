@@ -425,17 +425,14 @@ function updateDocRef(
     const module = item.detail!.slice(startIndex, finalIndex).trim();
     ref.isErl = module.startsWith(':');
     ref.module = ref.isErl ? module.slice(1) : module;
-    if (module === 'Kernel.SpecialForms') {
-      let arity = '/0';
-      const args = item.detail!.match(/\([^\.]+\)$/gi);
-      if (args && args[0]) {
-        const splits = args[0].split(',');
-        arity = `/${splits.length}`;
-      }
-      ref.fragment = `${item.label}${arity}`;
-    } else {
-      ref.fragment = ref.isErl ? item.label.replace('/', '-') : item.label;
+    let arity = '/0';
+    const args = item.detail!.match(/\([^\.]+\)$/gi);
+    if (args && args[0]) {
+      const splits = args[0].split(',');
+      arity = `/${splits.length}`;
     }
+    ref.fragment = `${trimmedLabel}${arity}`;
+    ref.fragment = ref.isErl ? ref.fragment.replace('/', '-') : ref.fragment;
   }
 
   if (isModule) {
