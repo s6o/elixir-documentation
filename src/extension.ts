@@ -290,7 +290,7 @@ async function completedItems(
       if (filtered.length > 0) {
         return filtered
           .map((e) => ({
-            label: e.label as string,
+            label: lineToken.phrase,
             detail: e.detail,
           }))
           .slice(0, 20);
@@ -405,10 +405,16 @@ function updateDocRef(
   const isModule: boolean = item.detail !== null && item.detail === 'module';
   const isStruct: boolean = item.detail !== null && item.detail === 'struct';
 
+  // The QuickPickItem label contains the line parsers token, which can contain
+  // module name(s)
+  const trimmedLabel =
+    item.label.lastIndexOf('.') >= 0
+      ? item.label.substring(item.label.lastIndexOf('.') + 1)
+      : item.label;
+
   if (isBehaviour) {
     ref.module = item.label.replace(' (behaviour)', '');
   }
-
   if (isException) {
     ref.module = item.label.replace(' (exception)', '');
   }
