@@ -93,5 +93,8 @@ export function lineParser(
     tokens[cursorIndex] = tokens[0];
     tokens[0] = cursorItem;
   }
-  return tokens;
+  // Remove duplicates from final result
+  return tokens.filter((token, index) => {
+    return index === tokens.findIndex((t) => token.phrase === t.phrase);
+  });
 }
