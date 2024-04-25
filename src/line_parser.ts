@@ -17,7 +17,7 @@ export function lineParser(
   lineRange: vscode.Range,
   cursor: vscode.Position
 ): LineToken[] {
-  const tokenSplitters = [' ', '(', ',', ')', ';'];
+  const tokenSplitters = [' ', '(', ',', ')', ';', '{', '}'];
   let tokens: LineToken[] = [];
 
   let index = lineRange.start.character;
