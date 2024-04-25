@@ -310,7 +310,9 @@ function updateDocRef(
   if (isFunction || isMacro) {
     const startIndex = item.detail!.indexOf(' ');
     const finalIndex = item.detail!.lastIndexOf('.');
+    const pIndex = item.detail!.lastIndexOf('(');
     const module = item.detail!.slice(startIndex, finalIndex).trim();
+    const fname = item.detail!.slice(finalIndex + 1, pIndex);
     ref.isErl = module.startsWith(':');
     ref.module = ref.isErl ? module.slice(1) : module;
     let arity = '/0';
@@ -319,10 +321,16 @@ function updateDocRef(
       const splits = args[0].split(',');
       arity = `/${splits.length}`;
     }
-    ref.fragment = `${trimmedLabel}${arity}`;
+    ref.fragment =
+      trimmedLabel === fname ? `${trimmedLabel}${arity}` : `${fname}${arity}`;
     ref.fragment = ref.isErl ? ref.fragment.replace('/', '-') : ref.fragment;
     if (ref.fragment.includes('|')) {
       ref.fragment = ref.fragment.replaceAll('|', encodeURIComponent('|'));
+    }
+    if (ref.fragment.includes('<') || ref.fragment.includes('>')) {
+      ref.fragment = ref.fragment
+        .replaceAll('<', encodeURIComponent('<'))
+        .replaceAll('>', encodeURIComponent('>'));
     }
   }
 
