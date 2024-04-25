@@ -291,6 +291,7 @@ function updateDocRef(
   const isMacro: boolean = item.detail?.startsWith('(macro)') || false;
   const isModule: boolean = item.detail !== null && item.detail === 'module';
   const isStruct: boolean = item.detail !== null && item.detail === 'struct';
+  const isTypespec: boolean = item.detail?.startsWith('typespec') || false;
 
   // The QuickPickItem label contains the line parsers token, which can contain
   // module name(s)
@@ -332,6 +333,11 @@ function updateDocRef(
 
   if (isStruct) {
     ref.module = item.label.replace(' (struct)', '');
+  }
+
+  if (isTypespec) {
+    ref.module = 'typespecs';
+    ref.fragment = 'basic-types';
   }
 
   ref.package = isDependency(packages, ref.module);
