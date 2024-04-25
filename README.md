@@ -24,6 +24,11 @@ documentation page.
 
 * Erlang/OTP and Elixir installation
 * The `iex` executable must be in PATH.
+* VSCode's [Elixir LSP extension](https://marketplace.visualstudio.com/items?itemName=JakeBecker.elixir-ls)
+
+Specific versions of Elixir/OTP also require a respective Elixir LSP extension version:
+
+* OTP 22.x with Elixir 1.9.x -> Elixir LSP extension: v0.7.0
 
 ## Extension Settings
 
