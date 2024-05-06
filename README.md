@@ -43,6 +43,12 @@ This extension contributes the following settings:
 
 ## Release Notes
 
+### 0.1.0
+
+New approach: of parsing the current cursor line into tokens that then are
+completed via Elixir LSP for more accurate documentation lookups.
+
 ### 0.0.1
 
 Initial very-very basic version for local testing.
+
